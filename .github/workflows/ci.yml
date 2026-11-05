@@ -1,0 +1,104 @@
+name: CI
+
+# Tests the package on all eight platforms with the native libraries from the pdfpecker wheels on PyPI, and publishes
+# the nine npm packages when the owner publishes a GitHub release.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  test:
+    name: ${{ matrix.platform }}, Node ${{ matrix.node }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { runner: ubuntu-24.04, platform: linux-x64, node: 20 }
+          - { runner: ubuntu-24.04, platform: linux-x64, node: 22 }
+          - { runner: ubuntu-24.04, platform: linux-x64, node: 24 }
+          - { runner: ubuntu-24.04-arm, platform: linux-arm64, node: 22 }
+          - { runner: macos-15, platform: darwin-arm64, node: 22 }
+          - { runner: macos-15-intel, platform: darwin-x64, node: 22 }
+          - { runner: windows-2025, platform: win32-x64, node: 22 }
+          - { runner: windows-11-arm, platform: win32-arm64, node: 22 }
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ matrix.node }}
+      - run: ci/test.sh
+
+  musl:
+    # Alpine runs in docker directly, because JavaScript actions do not run in Alpine containers on arm64.
+    name: ${{ matrix.platform }}, Node 22
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { runner: ubuntu-24.04, platform: linux-x64-musl }
+          - { runner: ubuntu-24.04-arm, platform: linux-arm64-musl }
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - run: docker run --rm -v "$PWD:/src" -w /src node:22-alpine sh -c 'apk add --no-cache bash && ci/test.sh'
+
+  publish:
+    # Runs only for a published release. The libraries come from the PyPI wheels of the same version, checked against
+    # PyPI's SHA-256, so npm and PyPI ship the same binaries. npm trusts this workflow (Trusted Publishing) once each
+    # package is set up for it on npmjs.com; until then, an NPM_TOKEN secret publishes.
+    if: github.event_name == 'release'
+    needs: [test, musl]
+    runs-on: ubuntu-24.04
+    environment:
+      name: npm
+      url: https://www.npmjs.com/package/pdfpecker
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          # Node 24 brings npm 11, which Trusted Publishing needs.
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+      - name: The release tag matches the package version
+        run: |
+          version=$(node -p 'require("./package.json").version')
+          tag="${GITHUB_REF_NAME#v}"
+          echo "tag $tag, package.json $version"
+          [ "$tag" = "$version" ]
+      - run: npm ci
+      - run: node scripts/fetch-native.js
+      - run: node scripts/pack.js
+      # The platform packages go first, so the main package never points at a version npm does not have. A package
+      # that is already there (a re-run) is skipped.
+      - name: Publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          set -euo pipefail
+          version=$(node -p 'require("./package.json").version')
+          for dir in dist/packages/*-* dist/packages/pdfpecker; do
+            name=$(node -p "require('./$dir/package.json').name")
+            if npm view "$name@$version" version >/dev/null 2>&1; then
+              echo "$name@$version is already on npm"
+              continue
+            fi
+            (cd "$dir" && npm publish --access public --provenance)
+          done

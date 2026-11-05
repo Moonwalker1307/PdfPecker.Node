@@ -1,0 +1,31 @@
+{
+  "name": "pdfpecker",
+  "version": "1.23.0",
+  "description": "Fast HTML and Markdown to PDF, and PDF to images, text and Markdown, with no browser: PdfPecker compiled to a native library.",
+  "keywords": ["pdf", "html-to-pdf", "markdown-to-pdf", "pdf-to-image", "pdf-to-text", "pdf-to-markdown", "pdfa", "merge-pdf"],
+  "homepage": "https://pdfpecker.net",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Moonwalker1307/PdfPecker.Node.git"
+  },
+  "bugs": "https://github.com/Moonwalker1307/PdfPecker.Node/issues",
+  "license": "MIT",
+  "main": "index.js",
+  "types": "index.d.ts",
+  "files": [
+    "index.js",
+    "index.d.ts",
+    "THIRD-PARTY-NOTICES.md"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "koffi": "^3.3.6"
+  },
+  "scripts": {
+    "test": "node --test",
+    "fetch-native": "node scripts/fetch-native.js",
+    "pack-all": "node scripts/pack.js"
+  }
+}
