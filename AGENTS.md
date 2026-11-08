@@ -36,6 +36,8 @@ package lists as optional dependencies, so npm installs only the one that fits.
 - `test/` – `node:test`; `PDFPECKER_TEST_PACKAGE` points the tests at an installed package.
 - `ci/test.sh` – tests the source tree, then the packed packages installed into a fresh project.
 - `.github/workflows/ci.yml` – the eight platforms on every PR, and the npm publish on a published release.
+- `.github/workflows/vulnerability-scan.yml` – daily: OSV-Scanner on `package-lock.json` (results in Security → Code
+  scanning), and an issue for each new .NET security release, since the library from the wheels carries the runtime.
 
 ## Build and verify
 
